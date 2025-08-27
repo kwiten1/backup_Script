@@ -6,6 +6,19 @@
 # =============================================================================
 
 
+if [[ "$1" == "--auto" ]]; then
+    CONFIG_FILE="$HOME/.backup.conf"
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"   # Загружаем переменные из конфига
+        AUTO_MODE=1
+        echo "Запуск в автоматическом режиме. Используется конфиг: $CONFIG_FILE"
+    else
+        echo "Ошибка: не найден конфиг $CONFIG_FILE"
+        exit 1
+    fi
+fi
+
+
 echo "Текущая директория: $PWD"
 read -e -p "Введите путь директории в которой находится файл/папка, для которой нужно сделать бэкап [Enter для текущей]: " -i "$PWD" BACKUP_DIR
 BACKUP_DIR=${BACKUP_DIR:-$PWD}
@@ -370,3 +383,38 @@ case $transfer_protocol in
         return
         ;;
 esac
+
+echo ""
+echo "╔══════════════════════════════════════════════╗"
+echo "║         НАСТРОЙКА АВТОМАТИЧЕСКОГО БЭКАПА     ║"
+echo "╚══════════════════════════════════════════════╝"
+echo ""
+
+read -p "Хотите включить автозапуск через cron? (Y/n): " AUTORUN
+if [[ "$AUTORUN" =~ ^[Yy]$ ]]; then
+    CONFIG_FILE="$HOME/.backup.conf"
+
+    echo "Создаём конфигурационный файл: $CONFIG_FILE"
+    cat > "$CONFIG_FILE" <<EOF
+# Конфигурация автобэкапа
+BACKUP_DIR="$BACKUP_DIR"
+TARGET_FILE="$TARGET_FILE"
+ARCHIVE_TYPE="$ARCHIVE_TYPE"
+ARCHIVE_DIR="${ARCHIVE_DIR:-$ARCHIVE_DIR_STABLE}"
+TRANSFER_PROTOCOL="$transfer_protocol"
+SERVER="${SCP_SERVER:-$RSYNC_SERVER}"
+SERVER_PATH="${SCP_PATH:-$RSYNC_PATH}"
+SERVER_PORT="${SCP_PORT:-$RSYNC_PORT}"
+EOF
+
+    echo "Конфиг сохранён!"
+
+    read -p "Введите расписание в формате cron (например, '0 3 * * *' для запуска каждый день в 3:00): " CRON_SCHEDULE
+    SCRIPT_PATH="$(realpath "$0")"
+
+    # Добавляем задачу в cron
+    (crontab -l 2>/dev/null; echo "$CRON_SCHEDULE bash $SCRIPT_PATH --auto >> \$HOME/backup.log 2>&1") | crontab -
+
+    echo "Автобэкап добавлен в cron!"
+    echo "Логи будут писаться в ~/backup.log"
+fi
